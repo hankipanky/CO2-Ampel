@@ -1,10 +1,8 @@
 #include "Secrets.h"
 #include <SoftwareSerial.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-#include <DHT.h>
+#include <DHTesp.h>
 
 const char* mqttServer = "mqtt.thingspeak.com";
 char mqttUserName[] = "Esp8266AirQuality";   // Use any name.
@@ -13,21 +11,10 @@ static const char alphanum[] = "0123456789"
                                "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                "abcdefghijklmnopqrstuvwxyz";  // For random generation of client ID.
 unsigned long lastConnectionTime = 0;
-const unsigned long postingInterval = 60L * 1000L; // Post data every 20 seconds.
-
-/*
-  // data wire is in D4 = GPIO2
-  #define ONE_WIRE_BUS 2
-  // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-  OneWire oneWire(ONE_WIRE_BUS);
-  DallasTemperature sensors(&oneWire);
-  DeviceAddress thermometer;
-*/
+const unsigned long postingInterval = 60L * 1000L; // Post data interval
 
 SoftwareSerial co2Serial(D1, D2); // RX, TX Pinns festlegen
-
-#define DHTTYPE DHT11   // DHT 11
-DHT dht(D3, DHTTYPE);
+DHTesp dht;
 
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
@@ -53,13 +40,9 @@ void setup() {
   Serial.print("Local IP: ");
   Serial.println(WiFi.localIP());
 
-  /*
-    sensors.begin();
-    sensors.getAddress(thermometer, 0);
-    sensors.setResolution(thermometer, 12);
-  */
-
   co2Serial.begin(9600);
+
+  dht.setup(D3, DHTesp::DHT11);
 
   Serial.println();
   mqtt.setServer(mqttServer, 1883);
@@ -97,14 +80,6 @@ void reconnect()
   }
 }
 
-/*
-  void getTemperature() {
-  sensors.requestTemperatures();
-  float tempC = sensors.getTempC(thermometer);
-  dtostrf(tempC, 2, 2, temperatureCString);
-  }
-*/
-
 int getCO2() {
   byte cmd[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79};
   char antwort[9];
@@ -128,31 +103,29 @@ void loop() {
   long now = millis();
   if (now - lastConnectionTime > postingInterval) {
     lastConnectionTime = now;
-    /*
-      getTemperature();
-      Serial.print("Temp: ");
-      Serial.print(temperatureCString);
-      Serial.println("C");
-    */
+    String data = "";
 
     int co2 = getCO2();
     Serial.print("CO2: ");
     Serial.print(co2);
     Serial.println("ppm");
+    data += "field1=" + String(co2, DEC);
 
-    float temp = dht.readTemperature();
-    float humidity = dht.readHumidity();
+    float temp = dht.getTemperature();
     Serial.print("Temp: ");
     Serial.print(temp);
-    Serial.print("°C, ");
+    Serial.println("°C");
+    if (!isnan(temp)) {
+      data += "&field2=" + String(temp, 1);
+    }
+    
+    float humidity = dht.getHumidity();
     Serial.print("Humidity: ");
     Serial.print(humidity);
-    Serial.print("% ");
-    Serial.println();
-
-    String data = String("field1=") + String(co2, DEC);
-    data += "&field2=" + String(temp, 1);
-    data += "&field3=" + String(humidity, 1);
+    Serial.println("%");
+    if (!isnan(humidity)) {
+      data += "&field3=" + String(humidity, 1);
+    }
     
     int length = data.length();
     const char *msgBuffer;
