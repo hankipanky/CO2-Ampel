@@ -3,6 +3,7 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <DHTesp.h>
+#include <Adafruit_NeoPixel.h>
 
 const char* mqttServer = "mqtt.thingspeak.com";
 char mqttUserName[] = "Esp8266AirQuality";   // Use any name.
@@ -16,6 +17,11 @@ const unsigned long postingInterval = 60L * 1000L; // Post data interval
 SoftwareSerial co2Serial(D1, D2); // RX, TX Pinns festlegen
 DHTesp dht;
 
+#define PIXEL_PIN   D5    // Digital IO pin connected to the NeoPixels.
+#define PIXEL_COUNT 3
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
 
@@ -24,6 +30,10 @@ char temperatureCString[6];
 void setup() {
   Serial.begin(115200);
   delay(10);
+
+  pixels.begin();
+  pixels.clear();
+  Serial.println("Pixelstrip initialized");
 
   Serial.println();
   Serial.print("Connecting to ");
@@ -93,6 +103,15 @@ int getCO2() {
   return ppm;                         // Antwort des MH-Z19 CO2 Sensors in ppm
 }
 
+uint32_t getPixelColour(int co2) {
+  if (co2 < 800) return pixels.Color(0, 150, 0);
+  if (co2 < 900) return pixels.Color(200, 200, 0);
+  if (co2 < 1000) return pixels.Color(250, 200, 0);
+  if (co2 < 1100) return pixels.Color(250, 100, 0);
+  if (co2 < 1200) return pixels.Color(250, 50, 0);
+  return pixels.Color(250, 0, 0);
+}
+
 
 void loop() {
   if (!mqtt.connected()) {
@@ -142,6 +161,13 @@ void loop() {
     } else {
       Serial.println("Error publishing message!");
     }
+
+    pixels.clear();
+    pixels.setPixelColor(0, getPixelColour(co2));
+    pixels.setPixelColor(1, getPixelColour(co2));
+    pixels.setPixelColor(2, getPixelColour(co2));
+    pixels.show();
+    Serial.println("Pixelstrip activated");
 
   }
   delay(100);
